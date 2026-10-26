@@ -405,6 +405,40 @@ tailwind.config={
       </div>
     </div>
 
+    
+    <!-- SAVED PNRS CLOUD SECTION (Render + MongoDB TTL Sync) -->
+    <div class="relative w-full rounded-[20px] p-4 glass-panel shadow-xl flex flex-col gap-3">
+      <div class="flex items-center justify-between pb-2 border-b border-white/10">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-xl bg-primary-container/20 border border-primary-container/30 text-primary-container flex items-center justify-center shadow-xs">
+            <span class="material-symbols-outlined text-[18px]">cloud_sync</span>
+          </div>
+          <div class="flex flex-col">
+            <h3 class="text-[14px] font-bold text-on-surface">सेव किए गए PNR (Saved in Cloud)</h3>
+            <span class="text-[10px] text-on-surface-variant font-medium">MongoDB डेटाबेस • यात्रा के 1 दिन बाद स्वतः डिलीट</span>
+          </div>
+        </div>
+        <button onclick="loadSavedPnrsFromBackend()" class="px-2.5 py-1 rounded-lg bg-surface-container-high hover:bg-white/10 text-primary-container hover:text-white flex items-center gap-1 text-[11px] font-bold cursor-pointer transition-all shadow-xs" title="क्लाउड से रिफ्रेश करें">
+          <span class="material-symbols-outlined text-[14px]">sync</span>
+          <span>रिफ्रेश</span>
+        </button>
+      </div>
+
+      <!-- Cloud Wakeup Indicator if sleeping -->
+      <div id="backend-wake-banner" class="hidden p-2 rounded-xl bg-primary-container/15 border border-primary-container/30 text-primary-container text-[11px] flex items-center gap-2 animate-pulse">
+        <span class="material-symbols-outlined text-[16px] animate-spin">hourglass_top</span>
+        <span>रेंडर सर्वर वेकअप हो रहा है, कृपया प्रतीक्षा करें...</span>
+      </div>
+
+      <!-- Saved PNRs Container -->
+      <div id="saved-pnr-container" class="flex flex-col gap-2">
+        <div class="flex items-center justify-center py-4 text-on-surface-variant text-[11px] gap-1.5">
+          <span class="material-symbols-outlined text-[16px] animate-spin">refresh</span>
+          <span>सेव किए गए PNR लोड हो रहे हैं...</span>
+        </div>
+      </div>
+    </div>
+
     <!-- PNR Result Card -->
     <div id="pnr-result-card" class="hidden relative w-full rounded-[20px] p-4 glass-panel shadow-2xl flex flex-col gap-3">
       <div class="flex items-start justify-between gap-2 pb-2 border-b border-white/10">
@@ -735,7 +769,7 @@ tailwind.config={
           <span class="text-[10px] text-primary-container font-mono">railkit_...</span>
         </label>
         <div class="relative flex items-center">
-          <input id="primary-token" class="w-full h-11 rounded-xl glass-input px-3 pr-10 text-[13px] text-on-surface font-mono focus:outline-none" placeholder="Paste your API key" type="password" value="railkit_855c824ef13f8d98fdc714e822522716e4c57e7647b8fd3c"/>
+          <input id="primary-token" class="w-full h-11 rounded-xl glass-input px-3 pr-10 text-[13px] text-on-surface font-mono focus:outline-none" placeholder="Paste your API key" type="password" placeholder="बैकएंड पर सुरक्षित संग्रहीत (https://picachu-1.onrender.com)" value=""/>
           <button onclick="togglePassword('primary-token',this)" class="absolute right-2 text-on-surface-variant hover:text-white cursor-pointer" type="button">
             <span class="material-symbols-outlined text-[18px]">visibility</span>
           </button>
@@ -1289,7 +1323,9 @@ window.addEventListener('hashchange', () => {
 });
 
 // ==================== RAILKIT / RAILRADAR API CLIENT ====================
-const RAILKIT_API_KEY = "railkit_855c824ef13f8d98fdc714e822522716e4c57e7647b8fd3c";
+// API Keys are now securely managed on the backend: https://picachu-1.onrender.com
+const RENDER_BASE_URL = "https://picachu-1.onrender.com";
+let RAILKIT_API_KEY = localStorage.getItem("railkit_key") || "";
 const RAILKIT_BASE_URL = "https://api.railkit.in";
 
 const RailKitAPI = {
@@ -1393,6 +1429,244 @@ const RailKitAPI = {
     return await res.json();
   }
 };
+
+
+// ==================== RENDER BACKEND CLIENT (https://picachu-1.onrender.com) ====================
+const RenderBackend = {
+  BASE_URL: 'https://picachu-1.onrender.com',
+  isWaking: false,
+
+  showWakeBanner(show = true) {
+    const banner = document.getElementById('backend-wake-banner');
+    if (banner) {
+      if (show) banner.classList.remove('hidden');
+      else banner.classList.add('hidden');
+    }
+  },
+
+  // Wakeup / Ping
+  async ping() {
+    try {
+      const controller = new AbortController();
+      const tId = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(`${this.BASE_URL}/health`, { signal: controller.signal });
+      clearTimeout(tId);
+      if (res.ok) {
+        this.showWakeBanner(false);
+        return true;
+      }
+    } catch(e) {}
+    return false;
+  },
+
+  // 1. Train Search via Backend POST /api/trains/search
+  async searchTrains(from, to, date) {
+    this.showWakeBanner(true);
+    const controller = new AbortController();
+    const tId = setTimeout(() => {
+      controller.abort();
+      this.showWakeBanner(false);
+    }, 12000);
+
+    try {
+      const res = await fetch(`${this.BASE_URL}/api/trains/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, to, date }),
+        signal: controller.signal
+      });
+      clearTimeout(tId);
+      this.showWakeBanner(false);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) return json.data;
+      }
+    } catch(err) {
+      clearTimeout(tId);
+      this.showWakeBanner(false);
+      console.warn("Backend /api/trains/search call failed, using high-speed fallback:", err);
+    }
+    return null;
+  },
+
+  // 2. Seat Availability via Backend POST /api/trains/availability
+  async checkAvailability(trainNo, fromCode, toCode, date, travelClass, quota = 'GN') {
+    const controller = new AbortController();
+    const tId = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const res = await fetch(`${this.BASE_URL}/api/trains/availability`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trainNo, fromCode, toCode, date, travelClass, quota }),
+        signal: controller.signal
+      });
+      clearTimeout(tId);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) return json.data;
+      }
+    } catch(err) {
+      clearTimeout(tId);
+      console.warn("Backend /api/trains/availability call failed, using realistic fallback:", err);
+    }
+    return null;
+  },
+
+  // 3. Save PNR to Backend POST /api/pnr/save
+  async savePnr(pnr, journeyDate, trainNo = '', trainName = '', status = 'SAVED') {
+    const cleanPnr = String(pnr).trim();
+    const cleanDate = journeyDate || new Date().toISOString().split('T')[0];
+
+    // Cache locally first for 100% offline reliability
+    let localPnrs = JSON.parse(localStorage.getItem('raj_saved_pnrs') || '[]');
+    const item = { pnr: cleanPnr, journeyDate: cleanDate, trainNo, trainName, status, savedAt: new Date().toISOString() };
+    localPnrs = [item, ...localPnrs.filter(p => p.pnr !== cleanPnr)].slice(0, 30);
+    localStorage.setItem('raj_saved_pnrs', JSON.stringify(localPnrs));
+    renderSavedPnrsUI(localPnrs);
+
+    try {
+      const controller = new AbortController();
+      const tId = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(`${this.BASE_URL}/api/pnr/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pnr: cleanPnr, journeyDate: cleanDate, trainNo, trainName, status }),
+        signal: controller.signal
+      });
+      clearTimeout(tId);
+      if (res.ok) {
+        const json = await res.json();
+        showToast("✓ PNR क्लाउड डेटाबेस (MongoDB) में सुरक्षित सेव हो गया!", "success");
+        return json;
+      }
+    } catch(err) {
+      console.warn("Backend /api/pnr/save failed, kept in local cache:", err);
+      showToast("✓ PNR स्थानीय रूप से सुरक्षित सेव हो गया!", "success");
+    }
+    return { success: true, localOnly: true };
+  },
+
+  // 4. Fetch Saved PNRs from Backend GET /api/pnr/list
+  async getSavedPnrs() {
+    let localPnrs = JSON.parse(localStorage.getItem('raj_saved_pnrs') || '[]');
+
+    try {
+      const controller = new AbortController();
+      const tId = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(`${this.BASE_URL}/api/pnr/list`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal
+      });
+      clearTimeout(tId);
+      if (res.ok) {
+        const json = await res.json();
+        const serverList = json.data || (Array.isArray(json) ? json : []);
+        if (serverList.length > 0) {
+          // Merge server list with local list
+          const merged = [...serverList];
+          localPnrs.forEach(lp => {
+            if (!merged.some(sp => sp.pnr === lp.pnr)) merged.push(lp);
+          });
+          localStorage.setItem('raj_saved_pnrs', JSON.stringify(merged));
+          return merged;
+        }
+      }
+    } catch(err) {
+      console.warn("Backend /api/pnr/list unreachable, using local cache:", err);
+    }
+    return localPnrs;
+  },
+
+  // 5. Delete Saved PNR
+  async deletePnr(pnr) {
+    let localPnrs = JSON.parse(localStorage.getItem('raj_saved_pnrs') || '[]');
+    localPnrs = localPnrs.filter(p => p.pnr !== pnr);
+    localStorage.setItem('raj_saved_pnrs', JSON.stringify(localPnrs));
+    renderSavedPnrsUI(localPnrs);
+
+    try {
+      await fetch(`${this.BASE_URL}/api/pnr/${pnr}`, { method: 'DELETE' });
+      showToast("PNR हटा दिया गया।", "info");
+    } catch(e) {}
+  }
+};
+
+// Render Saved PNRs UI
+function renderSavedPnrsUI(pnrs) {
+  const container = document.getElementById('saved-pnr-container');
+  if (!container) return;
+
+  if (!pnrs || pnrs.length === 0) {
+    container.innerHTML = `
+      <div class="py-4 text-center text-[11px] text-on-surface-variant flex flex-col items-center gap-1">
+        <span class="material-symbols-outlined text-[20px] opacity-40">inventory_2</span>
+        <span>कोई सेव किया गया PNR नहीं है। नया PNR जांचें, वह स्वतः यहाँ सेव हो जाएगा।</span>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = pnrs.map(item => {
+    const pnrStr = item.pnr;
+    const dojStr = item.journeyDate ? new Date(item.journeyDate).toLocaleDateString('hi-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Upcoming';
+    const trainInfo = item.trainNo ? `${item.trainNo} • ${item.trainName || ''}` : 'Indian Railways';
+    const statusText = item.status || 'SAVED';
+
+    return `
+      <div class="p-2.5 rounded-xl bg-surface-container-low/80 border border-white/5 flex items-center justify-between gap-2 shadow-xs transition-all hover:border-primary-container/40">
+        <div class="flex flex-col min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="font-mono font-black text-[13px] text-primary tracking-wider">${pnrStr}</span>
+            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-tertiary-container/20 text-tertiary-fixed">${statusText}</span>
+          </div>
+          <div class="flex items-center gap-2 text-[10px] text-on-surface-variant mt-0.5">
+            <span>📅 ${dojStr}</span>
+            <span>•</span>
+            <span class="truncate max-w-[120px]">${trainInfo}</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button onclick="checkSavedPnrDirectly('${pnrStr}')" class="px-2.5 py-1 rounded-lg bg-primary-container hover:brightness-110 text-[#0F172A] font-extrabold text-[10px] flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-xs" title="स्टेटस जांचें">
+            <span class="material-symbols-outlined text-[13px]">search</span>
+            <span>जांचें</span>
+          </button>
+          <button onclick="RenderBackend.deletePnr('${pnrStr}')" class="w-7 h-7 rounded-lg bg-surface-container-high hover:bg-rose-500/20 text-on-surface-variant hover:text-rose-400 flex items-center justify-center cursor-pointer transition-all" title="डिलीट करें">
+            <span class="material-symbols-outlined text-[14px]">delete</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadSavedPnrsFromBackend() {
+  const container = document.getElementById('saved-pnr-container');
+  if (container) {
+    container.innerHTML = `
+      <div class="flex items-center justify-center py-3 text-primary-container text-[11px] gap-1.5">
+        <span class="material-symbols-outlined text-[16px] animate-spin">refresh</span>
+        <span>क्लाउड से PNR सिंक हो रहे हैं...</span>
+      </div>
+    `;
+  }
+  const pnrs = await RenderBackend.getSavedPnrs();
+  renderSavedPnrsUI(pnrs);
+}
+
+function checkSavedPnrDirectly(pnr) {
+  fillPnr(pnr);
+  document.getElementById('btn-check-pnr')?.click();
+}
+
+// Auto-ping and load saved PNRs on startup
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    loadSavedPnrsFromBackend();
+    RenderBackend.ping();
+  }, 1000);
+});
 
 // ==================== COMPREHENSIVE STATION AUTOCOMPLETE ====================
 function searchStationsCombined(query) {
@@ -2167,7 +2441,10 @@ async function loadAndRenderAvailabilityData() {
   // Try fetching Live API
   let apiData = null;
   try {
-    const res = await RailKitAPI.getSeatAvailability(currentAvailTrainNo, currentAvailFromCode, currentAvailToCode, currentAvailDate, currentAvailClass, currentAvailQuota);
+    let res = await RenderBackend.checkAvailability(currentAvailTrainNo, currentAvailFromCode, currentAvailToCode, currentAvailDate, currentAvailClass, currentAvailQuota);
+    if (!res) {
+      res = await RailKitAPI.getSeatAvailability(currentAvailTrainNo, currentAvailFromCode, currentAvailToCode, currentAvailDate, currentAvailClass, currentAvailQuota);
+    }
     if (res && res.success && res.data) {
       apiData = res.data;
     }
@@ -3072,6 +3349,8 @@ function fillPnr(pnr) {
       const data = await RailKitAPI.checkPNR(pnr);
       const parsed = parsePnrResponse(data, pnr);
       displayPnrResult(parsed);
+      // Auto-save PNR to Cloud MongoDB Backend
+      RenderBackend.savePnr(pnr, parsed.doj || new Date().toISOString().split('T')[0], parsed.trainNo || '', parsed.trainName || '', parsed.overallStatus || 'CNF');
       if (window.AndroidBridge && window.AndroidBridge.showToast) {
         window.AndroidBridge.showToast(`PNR ${pnr}: ${parsed.trainName} ${parsed.from} ➔ ${parsed.to}`);
       }
@@ -3079,6 +3358,8 @@ function fillPnr(pnr) {
       console.warn("PNR error, using simulated response:", err);
       const parsed = parsePnrResponse(null, pnr);
       displayPnrResult(parsed);
+      // Auto-save PNR to Cloud MongoDB Backend
+      RenderBackend.savePnr(pnr, parsed.doj || new Date().toISOString().split('T')[0], parsed.trainNo || '', parsed.trainName || '', parsed.overallStatus || 'CNF');
     } finally {
       checkBtn.innerHTML = orig;
       checkBtn.disabled = false;

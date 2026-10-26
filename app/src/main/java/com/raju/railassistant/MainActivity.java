@@ -27,6 +27,19 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        // Configure Status Bar for dark theme (Light Icons / White text on dark background)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            getWindow().setStatusBarColor(android.graphics.Color.parseColor("#0F172A"));
+            getWindow().setNavigationBarColor(android.graphics.Color.parseColor("#060E20"));
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            android.view.View decor = getWindow().getDecorView();
+            // Clear SYSTEM_UI_FLAG_LIGHT_STATUS_BAR so icons are LIGHT (white)
+            int flags = decor.getSystemUiVisibility();
+            flags &= ~android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            decor.setSystemUiVisibility(flags);
+        }
+
         webView = findViewById(R.id.webView);
 
         requestAudioPermission();
