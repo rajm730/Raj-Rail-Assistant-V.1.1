@@ -1,10 +1,10 @@
-# 🚆 Raju Rail Assistant (Luminous Transit v2.0)
+# 🚆 Raj Rail Assistant V.1.1 (Luminous Transit)
 
 [![Platform](https://img.shields.io/badge/Platform-Android-green.svg)](https://www.android.com/)
 [![Design](https://img.shields.io/badge/Design-Luminous%20Transit%20Dark%20Glass-cyan.svg)](https://railradar.in)
 [![API](https://img.shields.io/badge/Backend-RailRadar%20%26%20RailKit%20API-blue.svg)](https://railradar.in)
 
-**Raju Rail Assistant** is an advanced, dark glassmorphic Indian Railways transit companion built with Google Stitch UI designs and backed by real-time RailRadar / RailKit APIs.
+**Raj Rail Assistant V.1.1** is an advanced, dark glassmorphic Indian Railways transit companion built with Google Stitch UI designs and backed by real-time RailRadar / RailKit APIs.
 
 ---
 
@@ -36,7 +36,7 @@
 ## 📱 Build & Installation
 
 The pre-built APK is included directly in the repository:
-- **[`RajuRailAssistant-v1.0.apk`](RajuRailAssistant-v1.0.apk)** (5.68 MB)
+- **[`RajRailAssistant-v1.1.apk`](RajRailAssistant-v1.1.apk)** (5.68 MB)
 
 To build from source:
 ```bash
